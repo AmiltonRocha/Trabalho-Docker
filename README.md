@@ -205,3 +205,4 @@ Verificar se foram removidos:
 ```bash
 docker ps -a
 ```
+# Trabalho-Docker
