@@ -1,0 +1,5 @@
+# Arquivos do WordPress em execução (compartilhados com containers)
+trabalho2/html/
+
+# Volumes e dados temporários
+*.log
