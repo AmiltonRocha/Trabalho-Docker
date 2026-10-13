@@ -88,6 +88,67 @@ ls html
 
 ---
 
+## Passo 9 (extra) — Adicionar mais workers (instâncias WordPress)
+
+Para adicionar mais um worker, são **2 arquivos** que precisam mudar + 1 comando.
+
+**1.** No `docker-compose.yml`, copie um bloco `wordpress` e mude o nome (ex: `wordpress4`):
+
+```yaml
+  wordpress4:
+    image: wordpress:5.4.2-php7.2-apache
+    container_name: wordpress4
+    restart: always
+    depends_on:
+      - mysql
+    environment:
+      WORDPRESS_DB_HOST: mysql:3306
+      WORDPRESS_DB_USER: usr-wordpress
+      WORDPRESS_DB_PASSWORD: pwd-wordpress
+      WORDPRESS_DB_NAME: wordpress
+    volumes:
+      - ./html:/var/www/html
+    networks:
+      - wpnet
+```
+
+**2.** No `nginx.conf`, adicione no `upstream`:
+
+```nginx
+    upstream wordpress_cluster {
+        server wordpress1:80;
+        server wordpress2:80;
+        server wordpress3:80;
+        server wordpress4:80;   # novo
+    }
+```
+
+**3.** Subir:
+
+```bash
+docker compose up -d
+```
+
+O `docker compose up -d` **não derruba** os containers que já estão rodando — ele só cria o novo. MySQL e os outros workers continuam de pé.
+
+---
+
+## Passo 10 (extra) — Remover um worker
+
+É o contrário de adicionar:
+
+**1.** Apague o bloco do worker no `docker-compose.yml` (ex: `wordpress4`)
+
+**2.** Apague a linha correspondente no `nginx.conf` (ex: `server wordpress4:80;`)
+
+**3.** Subir:
+
+```bash
+docker compose up -d
+```
+
+---
+
 ## Comandos extras — Parar e remover os containers do Trabalho 2
 
 Parar os 5 containers:
