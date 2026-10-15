@@ -1,0 +1,16 @@
+{
+  "cenario1": {
+    "titulo": "Cenario 1 - Post com imagem de 1MB",
+    "post_url": "/?p=5",
+    "image_url": "/wp-content/uploads/2026/10/imagem_1mb.png"
+  },
+  "cenario2": {
+    "titulo": "Cenario 2 - Post com texto de 400KB",
+    "post_url": "/?p=7"
+  },
+  "cenario3": {
+    "titulo": "Cenario 3 - Post com imagem de 300KB",
+    "post_url": "/?p=10",
+    "image_url": "/wp-content/uploads/2026/10/imagem_300kb.png"
+  }
+}
