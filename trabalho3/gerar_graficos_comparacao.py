@@ -7,9 +7,9 @@ Le os CSVs gerados com --csv (locust/resultados/*_stats.csv), no padrao:
 
 Zonas definidas (limites validados na maquina de 7,5GB):
   - ZONA SEGURA  : ate 350 usuarios (0% de erro)
-  - ZONA ESTOURO : 400 usuarios (~2-3% de erro no cenario2, HTTP 500)
+  - ZONA ESTOURO : 400+ usuarios (cenario2: ~2-3% de erro com 400, ~16-17% com 500, HTTP 500)
 
-Gera, por cenario, 1 figura (PNG) com 3 subplots e legenda destacando as zonas:
+Gera, por cenario, 1 figura (PNG) com 5 subplots de barras e legenda destacando as zonas:
   - comparacao_cenarioN.png
 
 Dependencia: pip install matplotlib

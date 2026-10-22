@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # ============================================================
 # Trabalho 3 - Executa a matriz completa de testes de carga
-#   instancias (1,2,3) x cenarios (1,2,3) x usuarios (10,350,400)
-#   10/350 = zona segura (~0 erro) | 400 = zona de estouro (ate ~3% erro no cenario2)
+#   instancias (1,2,3) x cenarios (1,2,3) x usuarios (10,350,400,500)
+#   10/350 = zona segura (~0 erro) | 400/500 = zona de estouro
+#   (cenario2: ate ~3% de erro com 400 e ~16-17% com 500)
 # CSVs sao gravados em locust/resultados/
 #
 # IMPORTANTE: usa `docker compose exec` (e NAO `docker compose run`),
@@ -12,7 +13,7 @@
 set -e
 cd "$(dirname "$0")"
 
-USUARIOS=(${USUARIOS:-10 350 400})
+USUARIOS=(${USUARIOS:-10 350 400 500})
 INSTANCIAS=(${INSTANCIAS:-1 2 3})
 CENARIOS=(cenario1 cenario2 cenario3)
 RUN_TIME=${RUN_TIME:-30s}

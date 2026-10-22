@@ -98,15 +98,16 @@ for i in 1 2 3; do curl -sI http://localhost:8080/ | grep -i x-upstream; done
 
 ## Passo 8 — Rodar TODA a matriz de testes automático
 
-Matriz: 3 cenários × 3 níveis de carga × 3 instâncias (1, 2, 3) = **27 execuções**
+Matriz: 3 cenários × 4 níveis de carga × 3 instâncias (1, 2, 3) = **36 execuções**
 
 | Nível | Usuários | Significado | Resultado |
 |---|---|---|---|
 | Leve | 10 | uso normal | 0% erro |
 | Pesado | 350 | limite da máquina (7,5GB RAM) | ~0% erro |
 | Extremo | 400 | zona de estouro | até ~3% erro no cenário 2 (HTTP 500) |
+| Máximo | 500 | estouro total | até ~17% erro no cenário 2 (HTTP 500) |
 
-- Duração: 30s por teste, spawn rate 25/s → ~20 min no total
+- Duração: 30s por teste, spawn rate 25/s → ~25 min no total
 
 ```bash
 chmod +x rodar_testes.sh
@@ -136,7 +137,7 @@ Gráficos normais (por cenário):
 python3 gerar_graficos.py
 ```
 
-Os gráficos ficam em `locust/resultados/graficos/`:
+Os gráficos ficam em `locust/resultados/graficos/` (gerados na hora, **não** ficam no repositório):
 
 - `cenarioN_usuarios_no_eixo_x.png` — eixo X = usuários, 1 linha por instância
 - `cenarioN_instancias_no_eixo_x.png` — eixo X = instâncias, 1 linha por usuários
@@ -151,9 +152,9 @@ python3 gerar_graficos_comparacao.py
 
 Os gráficos ficam em `locust/resultados/comparacao/`:
 
-- `comparacao_cenarioN.png` — figura única com 5 subplots (as mesmas 5 métricas) e legenda destacando:
+- `comparacao_cenarioN.png` — figura única com 5 subplots de **barras agrupadas** (as mesmas 5 métricas, 1 barra por instância) e legenda destacando:
   - **ZONA VERDE** (até 350 usuários): ~0% de erro, sistema estável
-  - **ZONA VERMELHA** (400 usuários): até ~3% de erro no cenário 2 (HTTP 500), sistema saturado
+  - **ZONA VERMELHA** (400 e 500 usuários): cenário 2 com ~3% de erro em 400 e ~17% em 500 (HTTP 500), sistema saturado
 
 ---
 
@@ -201,7 +202,7 @@ rm -rf locust/resultados/*
 
 # Evidências — Resultados dos Testes (18/10/2026)
 
-> Matriz completa: 27 execuções (3 cenários × 3 níveis × 3 instâncias), 30s cada.
+> Matriz completa: 36 execuções (3 cenários × 4 níveis × 3 instâncias), 30s cada.
 
 ## Resumo por nível de carga
 
@@ -210,10 +211,13 @@ rm -rf locust/resultados/*
 | Leve | 10 | 9 | **0%** | 11-55ms | ~10 | Estável |
 | Pesado | 350 | 9 | **0,02%*** | 16-720ms | ~272 | No limite |
 | Extremo | 400 | 9 | **0,27%**** | 26-846ms | ~295 | Saturado no cenário 2 (HTTP 500) |
+| Máximo | 500 | 9 | **1,57%***** | 33-1014ms | ~332 | Estouro no cenário 2 (HTTP 500) |
 
 \* Só o cenario2 com 3 instâncias teve 12 falhas em 2906 requisições (0,41%) — os outros 8 testes de 350 ficaram com 0%.
 
 \*\* Só o cenario2 com 2 e 3 instâncias teve falhas (162 em 59634 requisições no total do nível) — os outros 7 testes de 400 ficaram com 0%.
+
+\*\*\* Só o cenario2 com 2 e 3 instâncias teve falhas (1166 em 74418 requisições no total do nível) — os outros 7 testes de 500 ficaram com 0%.
 
 ## Detalhe das falhas
 
@@ -222,6 +226,8 @@ rm -rf locust/resultados/*
 | cenario2_u350_i3 | 12 | 2906 | 0,41% |
 | cenario2_u400_i2 | 93 | 2963 | 3,14% |
 | cenario2_u400_i3 | 69 | 3004 | 2,30% |
+| cenario2_u500_i2 | 563 | 3476 | 16,20% |
+| cenario2_u500_i3 | 603 | 3482 | 17,32% |
 
 Todos os erros são `HTTP 500` do WordPress — MySQL e PHP saturam acima de ~350 usuários simultâneos.
 
@@ -229,27 +235,19 @@ Todos os erros são `HTTP 500` do WordPress — MySQL e PHP saturam acima de ~35
 
 - **Até 350 usuários**: sistema aguenta praticamente sem erro (zona segura)
 - **400 usuários**: 2-3% de erro no cenário mais pesado (texto 400KB) — **zona de estouro**
-- Cenários com imagem (1MB/300KB) aguentaram 400 usuários com 0 erro — o gargalo é o cenário de texto (HTML pesado + PHP renderizando)
-- No cenário 2, mais instâncias do WordPress **não** reduziram o tempo nem os erros: o gargalo é a máquina única (CPU/RAM e MySQL compartilhados), não o número de containers
+- **500 usuários**: 16-17% de erro no cenário 2 com 2 e 3 instâncias — **estouro total**. Com 1 instância não houve erro, mas o tempo médio passou de 1 segundo (1014ms)
+- Cenários com imagem (1MB/300KB) aguentaram 500 usuários com 0 erro — o gargalo é o cenário de texto (HTML pesado + PHP renderizando)
+- No cenário 2, mais instâncias do WordPress **não** reduziram os erros (com 500 usuários até aumentaram): o gargalo é a máquina única (CPU/RAM e MySQL compartilhados), não o número de containers
 
 ## Gráficos gerados
 
-**Normais** (`locust/resultados/graficos/`):
-
-| Arquivo | Conteúdo |
-|---|---|
-| `cenario1_usuarios_no_eixo_x.png` | Cenário 1 (imagem 1MB), X = usuários |
-| `cenario1_instancias_no_eixo_x.png` | Cenário 1, X = instâncias |
-| `cenario2_usuarios_no_eixo_x.png` | Cenário 2 (texto 400KB), X = usuários |
-| `cenario2_instancias_no_eixo_x.png` | Cenário 2, X = instâncias |
-| `cenario3_usuarios_no_eixo_x.png` | Cenário 3 (imagem 300KB), X = usuários |
-| `cenario3_instancias_no_eixo_x.png` | Cenário 3, X = instâncias |
+**Normais** (`locust/resultados/graficos/`): não ficam no repositório. Para gerar, rode `python3 gerar_graficos.py` (ver Passo 9).
 
 **Comparativos com legenda** (`locust/resultados/comparacao/`):
 
 | Arquivo | Conteúdo |
 |---|---|
-| `comparacao_cenario1.png` | Zona verde (≤350) vs vermelha (400) — imagem 1MB |
+| `comparacao_cenario1.png` | Zona verde (≤350) vs vermelha (400-500) — imagem 1MB |
 | `comparacao_cenario2.png` | Zona verde vs vermelha — texto 400KB (mostra o estouro) |
 | `comparacao_cenario3.png` | Zona verde vs vermelha — imagem 300KB |
 
@@ -260,6 +258,6 @@ Todos os erros são `HTTP 500` do WordPress — MySQL e PHP saturam acima de ~35
 | 3 cenários (imagem 1MB, texto 400KB, imagem 300KB) | `locustfile.py` + `criar_posts.py` | ✓ |
 | WordPress multi-instância (1, 2, 3) | `docker-compose.yml` + `--scale` | ✓ |
 | Balanceador Nginx | `nginx.conf` com `X-Upstream` | ✓ |
-| Testes de carga com Locust | 27 execuções, CSVs em `resultados/` | ✓ |
-| Métricas: tempo, mediana, P95, RPS, erro | Gráficos em `graficos/` e `comparacao/` | ✓ |
+| Testes de carga com Locust | 36 execuções, CSVs em `resultados/` | ✓ |
+| Métricas: tempo, mediana, P95, RPS, erro | Gráficos em `comparacao/` (e `graficos/` via `gerar_graficos.py`) | ✓ |
 | Script automático de testes | `rodar_testes.sh` | ✓ |
