@@ -33,7 +33,7 @@ for inst in "${INSTANCIAS[@]}"; do
   # confirma o balanceamento (X-Upstream deve alternar)
   echo "Teste rapido do balanceamento:"
   for i in 1 2 3; do
-    curl -sI http://localhost/ | grep -i x-upstream || true
+    curl -sI http://localhost:8080/ | grep -i x-upstream || true
   done
 
   for cen in "${CENARIOS[@]}"; do

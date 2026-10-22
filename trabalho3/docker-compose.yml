@@ -36,7 +36,8 @@ services:
     container_name: nginx
     restart: always
     ports:
-      - "80:80"
+      # 8080 no host: a porta 80 fica livre para o Apache do XAMPP
+      - "8080:80"
     depends_on:
       - wordpress
     volumes:

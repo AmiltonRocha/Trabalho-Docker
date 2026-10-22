@@ -23,17 +23,20 @@ docker compose up -d --scale wordpress=1
 ## Passo 3 — Instalar o WordPress no navegador
 
 ```
-http://localhost
+http://localhost:8080
 ```
 
 Faça a instalação de 5 minutos (igual ao Trabalho 1). Usuário e senha que você escolher.
+
+> O nginx usa a porta **8080** no host (`8080:80` no `docker-compose.yml`) para não
+> conflitar com outro servidor web na porta 80 (ex.: Apache do XAMPP).
 
 ---
 
 ## Passo 4 — Criar os 3 posts de teste automaticamente
 
 ```bash
-python3 criar_posts.py --host http://localhost --user SEU_USUARIO --password 'SUA_SENHA'
+python3 criar_posts.py --host http://localhost:8080 --user SEU_USUARIO --password 'SUA_SENHA'
 ```
 
 Esse comando:
@@ -88,7 +91,7 @@ Sempre reinicie o nginx depois de mudar a escala (para re-resolver os IPs).
 Verifique o balanceamento:
 
 ```bash
-for i in 1 2 3; do curl -sI http://localhost/ | grep -i x-upstream; done
+for i in 1 2 3; do curl -sI http://localhost:8080/ | grep -i x-upstream; done
 ```
 
 ---
@@ -183,7 +186,7 @@ docker compose down -v
 Apague os posts antigos no WordPress (ou crie de novo) e rode:
 
 ```bash
-python3 criar_posts.py --host http://localhost --user SEU_USUARIO --password 'SUA_SENHA'
+python3 criar_posts.py --host http://localhost:8080 --user SEU_USUARIO --password 'SUA_SENHA'
 ```
 
 ---
