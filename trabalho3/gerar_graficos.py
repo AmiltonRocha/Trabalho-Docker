@@ -28,6 +28,8 @@ PASTA_PADRAO = os.path.join(AQUI, "locust", "resultados")
 
 METRICAS = [
     ("avg_ms", "Tempo medio de resposta (ms)", "Average response time"),
+    ("median_ms", "Mediana - Percentil 50% (ms)", "Median response time"),
+    ("p95_ms", "Percentil 95% (ms)", "95%"),
     ("rps", "Requisicoes por segundo (RPS)", "Requests/s"),
     ("erro_pct", "Taxa de erro (%)", None),  # calculada: falhas/total*100
 ]
@@ -52,9 +54,11 @@ def ler_stats(caminho):
                 total = float(achar_coluna(linha, "# requests", "Request Count") or 0)
                 falhas = float(achar_coluna(linha, "# failures", "Failure Count") or 0)
                 avg = float(achar_coluna(linha, "Average response time", "Average Latency") or 0)
+                median = float(achar_coluna(linha, "Median Response Time") or 0)
+                p95 = float(achar_coluna(linha, "95%") or 0)
                 rps = float(achar_coluna(linha, "Requests/s", "Requests/s (failures/s)") or 0)
                 erro = (falhas / total * 100) if total else 0.0
-                return {"avg_ms": avg, "rps": rps, "erro_pct": erro}
+                return {"avg_ms": avg, "median_ms": median, "p95_ms": p95, "rps": rps, "erro_pct": erro}
     return None
 
 
@@ -89,7 +93,7 @@ def plotar_cenario(cenario, pontos, pasta_saida, plt):
         return vals
 
     # Grafico 1: X = usuarios, 1 linha por instancia
-    fig, eixos = plt.subplots(3, 1, figsize=(8, 11), sharex=True)
+    fig, eixos = plt.subplots(5, 1, figsize=(8, 18), sharex=True)
     for inst in instancias:
         for ax, (chave, rotulo, _) in zip(eixos, METRICAS):
             ys = serie(lambda p, x, i=inst: p["usuarios"] == x and p["instancias"] == i, usuarios, chave)
@@ -105,7 +109,7 @@ def plotar_cenario(cenario, pontos, pasta_saida, plt):
     plt.close(fig)
 
     # Grafico 2: X = instancias, 1 linha por usuarios
-    fig, eixos = plt.subplots(3, 1, figsize=(8, 11), sharex=True)
+    fig, eixos = plt.subplots(5, 1, figsize=(8, 18), sharex=True)
     for usr in usuarios:
         for ax, (chave, rotulo, _) in zip(eixos, METRICAS):
             ys = serie(lambda p, x, u=usr: p["instancias"] == x and p["usuarios"] == u, instancias, chave)

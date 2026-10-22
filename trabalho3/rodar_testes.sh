@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # ============================================================
 # Trabalho 3 - Executa a matriz completa de testes de carga
-#   instancias (1,2,3) x cenarios (1,2,3) x usuarios (10,100,1000)
+#   instancias (1,2,3) x cenarios (1,2,3) x usuarios (10,200,350,600)
+#   10/200/350 = zona segura (0 erro) | 600 = zona de estouro (~2,5% erro)
 # CSVs sao gravados em locust/resultados/
 #
 # IMPORTANTE: usa `docker compose exec` (e NAO `docker compose run`),
@@ -11,11 +12,11 @@
 set -e
 cd "$(dirname "$0")"
 
-USUARIOS=(${USUARIOS:-10 100 1000})
+USUARIOS=(${USUARIOS:-10 200 350 600})
 INSTANCIAS=(${INSTANCIAS:-1 2 3})
 CENARIOS=(cenario1 cenario2 cenario3)
-RUN_TIME=${RUN_TIME:-1m}
-SPAWN_RATE=${SPAWN_RATE:-50}
+RUN_TIME=${RUN_TIME:-30s}
+SPAWN_RATE=${SPAWN_RATE:-25}
 
 mkdir -p locust/resultados
 
@@ -42,7 +43,7 @@ for inst in "${INSTANCIAS[@]}"; do
       docker compose exec -T locust locust \
         -f /locust/locustfile.py --host=http://nginx \
         --headless -u "${usr}" -r "${SPAWN_RATE}" --run-time "${RUN_TIME}" \
-        --tags "${cen}" --csv "${prefixo}" --only-summary
+        --tags "${cen}" --csv "${prefixo}" --only-summary || true
     done
   done
 done

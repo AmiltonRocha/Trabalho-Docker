@@ -95,7 +95,16 @@ for i in 1 2 3; do curl -sI http://localhost/ | grep -i x-upstream; done
 
 ## Passo 8 — Rodar TODA a matriz de testes automático
 
-Matriz: 3 cenários × 3 usuários (10, 100, 1000) × 3 instâncias (1, 2, 3) = **27 execuções**
+Matriz: 3 cenários × 4 níveis de carga × 3 instâncias (1, 2, 3) = **36 execuções**
+
+| Nível | Usuários | Significado | Resultado |
+|---|---|---|---|
+| Leve | 10 | uso normal | 0% erro |
+| Médio | 200 | pico de acesso | 0% erro |
+| Pesado | 350 | limite da máquina (7,5GB RAM) | ~0% erro |
+| Extremo | 600 | zona de estouro | 26-28% erro (HTTP 500) |
+
+- Duração: 30s por teste, spawn rate 25/s → ~25 min no total
 
 ```bash
 chmod +x rodar_testes.sh
@@ -108,7 +117,7 @@ Cada execução gera um CSV em `locust/resultados/` no padrão:
 Para testes mais rápidos (menos combinações e tempo menor):
 
 ```bash
-USUARIOS="10 50" INSTANCIAS="1 2" RUN_TIME=30s ./rodar_testes.sh
+USUARIOS="10 200" INSTANCIAS="1 2" RUN_TIME=30s ./rodar_testes.sh
 ```
 
 ---
@@ -119,6 +128,8 @@ USUARIOS="10 50" INSTANCIAS="1 2" RUN_TIME=30s ./rodar_testes.sh
 pip3 install --user --break-system-packages matplotlib
 ```
 
+Gráficos normais (por cenário):
+
 ```bash
 python3 gerar_graficos.py
 ```
@@ -128,7 +139,19 @@ Os gráficos ficam em `locust/resultados/graficos/`:
 - `cenarioN_usuarios_no_eixo_x.png` — eixo X = usuários, 1 linha por instância
 - `cenarioN_instancias_no_eixo_x.png` — eixo X = instâncias, 1 linha por usuários
 
-Cada figura traz 3 métricas: tempo médio de resposta (ms), RPS e taxa de erro (%).
+Cada figura traz 5 métricas: tempo médio de resposta (ms), **mediana (percentil 50%)**, **percentil 95% (P95)**, RPS e taxa de erro (%).
+
+**Gráficos comparativos com legenda (zona segura vs zona de estouro):**
+
+```bash
+python3 gerar_graficos_comparacao.py
+```
+
+Os gráficos ficam em `locust/resultados/comparacao/`:
+
+- `comparacao_cenarioN.png` — figura única com 3 subplots e legenda destacando:
+  - **ZONA VERDE** (até 350 usuários): 0% de erro, sistema estável
+  - **ZONA VERMELHA** (600 usuários): 26-28% de erro (HTTP 500), sistema saturado
 
 ---
 
@@ -171,3 +194,68 @@ python3 criar_posts.py --host http://localhost --user SEU_USUARIO --password 'SU
 ```bash
 rm -rf locust/resultados/*
 ```
+
+---
+
+# Evidências — Resultados dos Testes (18/10/2026)
+
+> Matriz completa: 36 execuções (3 cenários × 4 níveis × 3 instâncias), 30s cada.
+
+## Resumo por nível de carga
+
+| Nível | Usuários | Testes | Erro | Tempo médio | RPS máx | Situação |
+|---|---|---|---|---|---|---|
+| Leve | 10 | 9 | **0%** | 11-54ms | ~11 | Estável |
+| Médio | 200 | 9 | **0%** | 11-61ms | ~177 | Estável |
+| Pesado | 350 | 9 | **0,06%*** | 14-684ms | ~274 | No limite |
+| Extremo | 600 | 9 | **~10%** | 86-800ms | ~347 | Saturado (HTTP 500) |
+
+\* Só o cenario2 com 3 instâncias teve 16 falhas em 2868 requisições (0,56%) — os outros 8 testes de 350 ficaram com 0%.
+
+## Detalhe das falhas
+
+| Teste | Falhas | Total | % |
+|---|---|---|---|
+| cenario2_u350_i3 | 16 | 2868 | 0,56% |
+| cenario2_u600_i2 | 1009 | 3634 | 27,77% |
+| cenario2_u600_i3 | 958 | 3670 | 26,10% |
+
+Todos os erros são `HTTP 500` do WordPress — MySQL e PHP saturam acima de ~350 usuários simultâneos.
+
+## Conclusão da máquina (12 CPU / 7,5GB RAM)
+
+- **Até 350 usuários**: sistema aguenta sem erro (zona segura)
+- **600 usuários**: 26-28% de erro no cenário mais pesado (texto 400KB) — **zona de estouro**
+- Cenários com imagem (1MB/300KB) aguentaram 600 usuários com 0 erro — o gargalo é o cenário de texto (HTML pesado + PHP renderizando)
+
+## Gráficos gerados
+
+**Normais** (`locust/resultados/graficos/`):
+
+| Arquivo | Conteúdo |
+|---|---|
+| `cenario1_usuarios_no_eixo_x.png` | Cenário 1 (imagem 1MB), X = usuários |
+| `cenario1_instancias_no_eixo_x.png` | Cenário 1, X = instâncias |
+| `cenario2_usuarios_no_eixo_x.png` | Cenário 2 (texto 400KB), X = usuários |
+| `cenario2_instancias_no_eixo_x.png` | Cenário 2, X = instâncias |
+| `cenario3_usuarios_no_eixo_x.png` | Cenário 3 (imagem 300KB), X = usuários |
+| `cenario3_instancias_no_eixo_x.png` | Cenário 3, X = instâncias |
+
+**Comparativos com legenda** (`locust/resultados/comparacao/`):
+
+| Arquivo | Conteúdo |
+|---|---|
+| `comparacao_cenario1.png` | Zona verde (≤350) vs vermelha (600) — imagem 1MB |
+| `comparacao_cenario2.png` | Zona verde vs vermelha — texto 400KB (mostra o estouro) |
+| `comparacao_cenario3.png` | Zona verde vs vermelha — imagem 300KB |
+
+## Checklist final — Requisitos do enunciado
+
+| Requisito | Evidência | Status |
+|---|---|---|
+| 3 cenários (imagem 1MB, texto 400KB, imagem 300KB) | `locustfile.py` + `criar_posts.py` | ✓ |
+| WordPress multi-instância (1, 2, 3) | `docker-compose.yml` + `--scale` | ✓ |
+| Balanceador Nginx | `nginx.conf` com `X-Upstream` | ✓ |
+| Testes de carga com Locust | 36 execuções, CSVs em `resultados/` | ✓ |
+| Métricas: tempo, mediana, P95, RPS, erro | Gráficos em `graficos/` e `comparacao/` | ✓ |
+| Script automático de testes | `rodar_testes.sh` | ✓ |
