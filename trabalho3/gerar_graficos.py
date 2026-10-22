@@ -117,6 +117,8 @@ def plotar_cenario(cenario, pontos, pasta_saida, plt):
             ax.set_ylabel(rotulo)
             ax.grid(True, alpha=0.3)
             ax.legend()
+    # so os valores inteiros testados (1, 2, 3), sem 1.25, 1.5...
+    eixos[-1].set_xticks(instancias)
     eixos[-1].set_xlabel("Instancias do WordPress")
     eixos[0].set_title(f"{cenario} - variando instancias (eixo X = instancias)")
     fig.tight_layout()

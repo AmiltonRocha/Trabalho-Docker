@@ -137,10 +137,10 @@ Gráficos normais (por cenário):
 python3 gerar_graficos.py
 ```
 
-Os gráficos ficam em `locust/resultados/graficos/` (gerados na hora, **não** ficam no repositório):
+Os gráficos ficam em `locust/resultados/graficos/`:
 
 - `cenarioN_usuarios_no_eixo_x.png` — eixo X = usuários, 1 linha por instância
-- `cenarioN_instancias_no_eixo_x.png` — eixo X = instâncias, 1 linha por usuários
+- `cenarioN_instancias_no_eixo_x.png` — eixo X = instâncias (1, 2, 3), 1 linha por usuários
 
 Cada figura traz 5 métricas: tempo médio de resposta (ms), **mediana (percentil 50%)**, **percentil 95% (P95)**, RPS e taxa de erro (%).
 
@@ -241,7 +241,16 @@ Todos os erros são `HTTP 500` do WordPress — MySQL e PHP saturam acima de ~35
 
 ## Gráficos gerados
 
-**Normais** (`locust/resultados/graficos/`): não ficam no repositório. Para gerar, rode `python3 gerar_graficos.py` (ver Passo 9).
+**Normais** (`locust/resultados/graficos/`) — os dois estilos pedidos no enunciado (usuários no eixo X e instâncias no eixo X):
+
+| Arquivo | Conteúdo |
+|---|---|
+| `cenario1_usuarios_no_eixo_x.png` | Cenário 1 (imagem 1MB), X = usuários (10/350/400/500) |
+| `cenario1_instancias_no_eixo_x.png` | Cenário 1, X = instâncias (1/2/3) |
+| `cenario2_usuarios_no_eixo_x.png` | Cenário 2 (texto 400KB), X = usuários |
+| `cenario2_instancias_no_eixo_x.png` | Cenário 2, X = instâncias |
+| `cenario3_usuarios_no_eixo_x.png` | Cenário 3 (imagem 300KB), X = usuários |
+| `cenario3_instancias_no_eixo_x.png` | Cenário 3, X = instâncias |
 
 **Comparativos com legenda** (`locust/resultados/comparacao/`):
 
@@ -259,5 +268,5 @@ Todos os erros são `HTTP 500` do WordPress — MySQL e PHP saturam acima de ~35
 | WordPress multi-instância (1, 2, 3) | `docker-compose.yml` + `--scale` | ✓ |
 | Balanceador Nginx | `nginx.conf` com `X-Upstream` | ✓ |
 | Testes de carga com Locust | 36 execuções, CSVs em `resultados/` | ✓ |
-| Métricas: tempo, mediana, P95, RPS, erro | Gráficos em `comparacao/` (e `graficos/` via `gerar_graficos.py`) | ✓ |
+| Métricas: tempo, mediana, P95, RPS, erro | Gráficos em `graficos/` (X = usuários e X = instâncias) e `comparacao/` | ✓ |
 | Script automático de testes | `rodar_testes.sh` | ✓ |
