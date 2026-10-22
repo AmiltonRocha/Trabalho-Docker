@@ -28,7 +28,7 @@ http://localhost:8080
 
 Faça a instalação de 5 minutos (igual ao Trabalho 1). Usuário e senha que você escolher.
 
-> O nginx usa a porta **8080** no host (`8080:80` no `docker-compose.yml`) para não
+> O nginx usa a porta **8080** no host (`8080:8080` no `docker-compose.yml`, mesma porta dentro e fora do container) para não
 > conflitar com outro servidor web na porta 80 (ex.: Apache do XAMPP).
 
 ---
@@ -61,7 +61,7 @@ http://localhost:8089
 Preencha:
 - **Number of users**: ex. 10
 - **Spawn rate**: ex. 10
-- **Host**: `http://nginx` (já vem preenchido)
+- **Host**: `http://nginx:8080` (já vem preenchido)
 
 Escolha a **tag** do cenário em *Edit load test → Load test tags* (cenario1, cenario2 ou cenario3) e clique **Start**.
 
@@ -70,7 +70,7 @@ Escolha a **tag** do cenário em *Edit load test → Load test tags* (cenario1, 
 ## Passo 6 — Testar pelo terminal (headless) um cenário
 
 ```bash
-docker compose exec -T locust locust -f /locust/locustfile.py --host=http://nginx --headless -u 10 -r 10 --run-time 30s --tags cenario1 --csv /locust/resultados/manual_cenario1_u10_i1 --only-summary
+docker compose exec -T locust locust -f /locust/locustfile.py --host=http://nginx:8080 --headless -u 10 -r 10 --run-time 30s --tags cenario1 --csv /locust/resultados/manual_cenario1_u10_i1 --only-summary
 ```
 
 > **Atenção:** use `docker compose exec` (e não `docker compose run`) para os testes.

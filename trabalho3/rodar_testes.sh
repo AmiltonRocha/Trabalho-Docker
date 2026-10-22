@@ -13,6 +13,10 @@
 set -e
 cd "$(dirname "$0")"
 
+# Git Bash (Windows) converte /locust/... em caminho do Windows antes de
+# chamar o docker; isto desliga a conversao (sem efeito no Linux)
+export MSYS_NO_PATHCONV=1
+
 USUARIOS=(${USUARIOS:-10 350 400 500})
 INSTANCIAS=(${INSTANCIAS:-1 2 3})
 CENARIOS=(cenario1 cenario2 cenario3)
@@ -42,7 +46,7 @@ for inst in "${INSTANCIAS[@]}"; do
       prefixo="/locust/resultados/${cen}_u${usr}_i${inst}"
       echo "---- ${cen} | usuarios=${usr} | instancias=${inst} | duracao=${RUN_TIME} ----"
       docker compose exec -T locust locust \
-        -f /locust/locustfile.py --host=http://nginx \
+        -f /locust/locustfile.py --host=http://nginx:8080 \
         --headless -u "${usr}" -r "${SPAWN_RATE}" --run-time "${RUN_TIME}" \
         --tags "${cen}" --csv "${prefixo}" --only-summary || true
     done

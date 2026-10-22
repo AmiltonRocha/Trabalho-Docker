@@ -36,8 +36,9 @@ services:
     container_name: nginx
     restart: always
     ports:
-      # 8080 no host: a porta 80 fica livre para o Apache do XAMPP
-      - "8080:80"
+      # 8080 no host (a porta 80 fica livre para o Apache do XAMPP) e no
+      # container, para o WordPress nao redirecionar o Locust para outra porta
+      - "8080:8080"
     depends_on:
       - wordpress
     volumes:
@@ -52,7 +53,7 @@ services:
     ports:
       - "8089:8089"
     environment:
-      ATTACKED_HOST: http://nginx
+      ATTACKED_HOST: http://nginx:8080
       LOCUST_FILE: locustfile.py
       LOCUST_OPTS: ""
     volumes:
