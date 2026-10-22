@@ -7,7 +7,7 @@ Le os CSVs gerados com --csv (locust/resultados/*_stats.csv), no padrao:
 
 Zonas definidas (limites validados na maquina de 7,5GB):
   - ZONA SEGURA  : ate 350 usuarios (0% de erro)
-  - ZONA ESTOURO : 600 usuarios (~2,5% de erro, HTTP 500)
+  - ZONA ESTOURO : 400 usuarios (~2-3% de erro no cenario2, HTTP 500)
 
 Gera, por cenario, 1 figura (PNG) com 3 subplots e legenda destacando as zonas:
   - comparacao_cenarioN.png

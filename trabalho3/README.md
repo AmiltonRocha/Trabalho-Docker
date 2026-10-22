@@ -95,16 +95,15 @@ for i in 1 2 3; do curl -sI http://localhost/ | grep -i x-upstream; done
 
 ## Passo 8 — Rodar TODA a matriz de testes automático
 
-Matriz: 3 cenários × 4 níveis de carga × 3 instâncias (1, 2, 3) = **36 execuções**
+Matriz: 3 cenários × 3 níveis de carga × 3 instâncias (1, 2, 3) = **27 execuções**
 
 | Nível | Usuários | Significado | Resultado |
 |---|---|---|---|
 | Leve | 10 | uso normal | 0% erro |
-| Médio | 200 | pico de acesso | 0% erro |
 | Pesado | 350 | limite da máquina (7,5GB RAM) | ~0% erro |
-| Extremo | 600 | zona de estouro | 26-28% erro (HTTP 500) |
+| Extremo | 400 | zona de estouro | até ~3% erro no cenário 2 (HTTP 500) |
 
-- Duração: 30s por teste, spawn rate 25/s → ~25 min no total
+- Duração: 30s por teste, spawn rate 25/s → ~20 min no total
 
 ```bash
 chmod +x rodar_testes.sh
@@ -117,7 +116,7 @@ Cada execução gera um CSV em `locust/resultados/` no padrão:
 Para testes mais rápidos (menos combinações e tempo menor):
 
 ```bash
-USUARIOS="10 200" INSTANCIAS="1 2" RUN_TIME=30s ./rodar_testes.sh
+USUARIOS="10 350" INSTANCIAS="1 2" RUN_TIME=30s ./rodar_testes.sh
 ```
 
 ---
@@ -149,9 +148,9 @@ python3 gerar_graficos_comparacao.py
 
 Os gráficos ficam em `locust/resultados/comparacao/`:
 
-- `comparacao_cenarioN.png` — figura única com 3 subplots e legenda destacando:
-  - **ZONA VERDE** (até 350 usuários): 0% de erro, sistema estável
-  - **ZONA VERMELHA** (600 usuários): 26-28% de erro (HTTP 500), sistema saturado
+- `comparacao_cenarioN.png` — figura única com 5 subplots (as mesmas 5 métricas) e legenda destacando:
+  - **ZONA VERDE** (até 350 usuários): ~0% de erro, sistema estável
+  - **ZONA VERMELHA** (400 usuários): até ~3% de erro no cenário 2 (HTTP 500), sistema saturado
 
 ---
 
@@ -199,34 +198,36 @@ rm -rf locust/resultados/*
 
 # Evidências — Resultados dos Testes (18/10/2026)
 
-> Matriz completa: 36 execuções (3 cenários × 4 níveis × 3 instâncias), 30s cada.
+> Matriz completa: 27 execuções (3 cenários × 3 níveis × 3 instâncias), 30s cada.
 
 ## Resumo por nível de carga
 
 | Nível | Usuários | Testes | Erro | Tempo médio | RPS máx | Situação |
 |---|---|---|---|---|---|---|
-| Leve | 10 | 9 | **0%** | 11-54ms | ~11 | Estável |
-| Médio | 200 | 9 | **0%** | 11-61ms | ~177 | Estável |
-| Pesado | 350 | 9 | **0,06%*** | 14-684ms | ~274 | No limite |
-| Extremo | 600 | 9 | **~10%** | 86-800ms | ~347 | Saturado (HTTP 500) |
+| Leve | 10 | 9 | **0%** | 11-55ms | ~10 | Estável |
+| Pesado | 350 | 9 | **0,02%*** | 16-720ms | ~272 | No limite |
+| Extremo | 400 | 9 | **0,27%**** | 26-846ms | ~295 | Saturado no cenário 2 (HTTP 500) |
 
-\* Só o cenario2 com 3 instâncias teve 16 falhas em 2868 requisições (0,56%) — os outros 8 testes de 350 ficaram com 0%.
+\* Só o cenario2 com 3 instâncias teve 12 falhas em 2906 requisições (0,41%) — os outros 8 testes de 350 ficaram com 0%.
+
+\*\* Só o cenario2 com 2 e 3 instâncias teve falhas (162 em 59634 requisições no total do nível) — os outros 7 testes de 400 ficaram com 0%.
 
 ## Detalhe das falhas
 
 | Teste | Falhas | Total | % |
 |---|---|---|---|
-| cenario2_u350_i3 | 16 | 2868 | 0,56% |
-| cenario2_u600_i2 | 1009 | 3634 | 27,77% |
-| cenario2_u600_i3 | 958 | 3670 | 26,10% |
+| cenario2_u350_i3 | 12 | 2906 | 0,41% |
+| cenario2_u400_i2 | 93 | 2963 | 3,14% |
+| cenario2_u400_i3 | 69 | 3004 | 2,30% |
 
 Todos os erros são `HTTP 500` do WordPress — MySQL e PHP saturam acima de ~350 usuários simultâneos.
 
 ## Conclusão da máquina (12 CPU / 7,5GB RAM)
 
-- **Até 350 usuários**: sistema aguenta sem erro (zona segura)
-- **600 usuários**: 26-28% de erro no cenário mais pesado (texto 400KB) — **zona de estouro**
-- Cenários com imagem (1MB/300KB) aguentaram 600 usuários com 0 erro — o gargalo é o cenário de texto (HTML pesado + PHP renderizando)
+- **Até 350 usuários**: sistema aguenta praticamente sem erro (zona segura)
+- **400 usuários**: 2-3% de erro no cenário mais pesado (texto 400KB) — **zona de estouro**
+- Cenários com imagem (1MB/300KB) aguentaram 400 usuários com 0 erro — o gargalo é o cenário de texto (HTML pesado + PHP renderizando)
+- No cenário 2, mais instâncias do WordPress **não** reduziram o tempo nem os erros: o gargalo é a máquina única (CPU/RAM e MySQL compartilhados), não o número de containers
 
 ## Gráficos gerados
 
@@ -245,7 +246,7 @@ Todos os erros são `HTTP 500` do WordPress — MySQL e PHP saturam acima de ~35
 
 | Arquivo | Conteúdo |
 |---|---|
-| `comparacao_cenario1.png` | Zona verde (≤350) vs vermelha (600) — imagem 1MB |
+| `comparacao_cenario1.png` | Zona verde (≤350) vs vermelha (400) — imagem 1MB |
 | `comparacao_cenario2.png` | Zona verde vs vermelha — texto 400KB (mostra o estouro) |
 | `comparacao_cenario3.png` | Zona verde vs vermelha — imagem 300KB |
 
@@ -256,6 +257,6 @@ Todos os erros são `HTTP 500` do WordPress — MySQL e PHP saturam acima de ~35
 | 3 cenários (imagem 1MB, texto 400KB, imagem 300KB) | `locustfile.py` + `criar_posts.py` | ✓ |
 | WordPress multi-instância (1, 2, 3) | `docker-compose.yml` + `--scale` | ✓ |
 | Balanceador Nginx | `nginx.conf` com `X-Upstream` | ✓ |
-| Testes de carga com Locust | 36 execuções, CSVs em `resultados/` | ✓ |
+| Testes de carga com Locust | 27 execuções, CSVs em `resultados/` | ✓ |
 | Métricas: tempo, mediana, P95, RPS, erro | Gráficos em `graficos/` e `comparacao/` | ✓ |
 | Script automático de testes | `rodar_testes.sh` | ✓ |
