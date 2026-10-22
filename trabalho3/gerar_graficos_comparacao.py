@@ -26,7 +26,7 @@ AQUI = os.path.dirname(os.path.abspath(__file__))
 PASTA_PADRAO = os.path.join(AQUI, "locust", "resultados")
 
 LIMITE_SEGURO = 350   # usuarios com 0 erro
-LIMITE_ESTOURO = 400  # usuarios com erro (cenario2 ~2-3%)
+LIMITE_ESTOURO = 400  # usuarios onde cenario2 comeca a dar erro
 
 METRICAS = [
     ("avg_ms", "Tempo medio de resposta (ms)"),
@@ -98,28 +98,48 @@ def plotar_comparacao(cenario, pontos, pasta_saida, plt):
 
     fig, eixos = plt.subplots(5, 1, figsize=(10, 20), sharex=True)
 
-    for ax, (chave, rotulo) in zip(eixos, METRICAS):
-        # faixas de zona
-        ax.axvspan(min(usuarios), LIMITE_SEGURO, alpha=0.12, color="green",
-                   label=f"ZONA SEGURA (ate {LIMITE_SEGURO} usr, 0% erro)")
-        ax.axvspan(LIMITE_SEGURO, max(usuarios), alpha=0.12, color="red",
-                   label=f"ZONA DE ESTOURO ({LIMITE_ESTOURO} usr, ~2-3% erro)")
+    # posicoes categoricas para as barras (0, 1, 2...)
+    pos = list(range(len(usuarios)))
 
-        for inst in instancias:
+    for idx, (ax, (chave, rotulo)) in enumerate(zip(eixos, METRICAS)):
+        # faixas de zona (baseadas no indice)
+        meio = (pos[0] + pos[-1]) / 2
+        limite_idx = pos[-1] - 0.5 if LIMITE_SEGURO >= usuarios[-2] else pos[0] + 0.5
+        ax.axvspan(pos[0] - 0.5, meio + 0.25, alpha=0.12, color="green",
+                   label=f"ZONA SEGURA (ate {LIMITE_SEGURO} usr, 0% erro)")
+        ax.axvspan(meio + 0.25, pos[-1] + 0.5, alpha=0.12, color="red",
+                   label=f"ZONA DE ESTOURO ({LIMITE_ESTOURO}+ usr, erros no cenario2)")
+
+        # BARRAS AGRUPADAS
+        largura = 0.25
+        for j, inst in enumerate(instancias):
             ys = serie(inst, chave)
-            ax.plot(usuarios, ys, marker="o", linewidth=2, color=cores.get(inst, "#9C27B0"),
-                    label=f"{inst} instancia(s) do WordPress")
-            # anota valor em cada ponto
-            for x, y in zip(usuarios, ys):
-                if not np.isnan(y):
-                    ax.annotate(f"{y:.1f}", (x, y), textcoords="offset points",
-                                xytext=(0, 8), ha="center", fontsize=8)
+            desloc = (j - 1) * largura
+            barras = ax.bar([p + desloc for p in pos], ys, width=largura,
+                            color=cores.get(inst, "#9C27B0"), alpha=0.85,
+                            label=f"{inst} instancia(s)")
+            for bar, y in zip(barras, ys):
+                if np.isnan(y):
+                    continue
+                if chave == "erro_pct":
+                    txt = f"{y:.1f}%" if y > 0 else "0%"
+                elif y >= 100:
+                    txt = f"{y:.0f}"
+                else:
+                    txt = f"{y:.1f}"
+                ax.annotate(txt, (bar.get_x() + bar.get_width()/2, bar.get_height()),
+                            textcoords="offset points", xytext=(0, 3),
+                            ha="center", fontsize=7,
+                            fontweight="bold" if (chave == "erro_pct" and y > 0) else "normal",
+                            color="#D32F2F" if (chave == "erro_pct" and y > 0) else "black")
+        ax.set_xticks(pos)
+        ax.set_xticklabels([f"{u}" for u in usuarios])
 
         ax.set_ylabel(rotulo, fontsize=10)
-        ax.grid(True, alpha=0.3)
+        ax.grid(True, alpha=0.3, axis="y")
         ax.legend(loc="upper left", fontsize=8, ncol=2)
 
-    eixos[-1].set_xlabel("Usuarios simultaneos (leve=10 | pesado=350 | extremo=400)", fontsize=10)
+    eixos[-1].set_xlabel("Usuarios simultaneos (leve=10 | pesado=350 | extremo=400 | maximo=500)", fontsize=10)
     eixos[0].set_title(
         f"{cenario} - Comparacao de carga: ZONA SEGURA (verde) vs ZONA DE ESTOURO (vermelho)\n"
         f"Maquina: 12 CPU / 7,5GB RAM | Locust + WordPress + MySQL na mesma maquina",
