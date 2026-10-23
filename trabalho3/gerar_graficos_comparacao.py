@@ -192,7 +192,7 @@ def plotar_comparacao(cenario, pontos, pasta_saida, plt, legenda):
         "Usuarios simultaneos (" + " | ".join(str(u) for u in usuarios) + ")", fontsize=10)
     eixos[0].set_title(
         f"{cenario} - Comparacao de carga: ZONA SEGURA (verde) vs ZONA DE ESTOURO (vermelho)\n"
-        f"{legenda} | Locust + WordPress + MySQL na mesma maquina",
+        f"{legenda}\nLocust + WordPress + MySQL na mesma maquina",
         fontsize=11, fontweight="bold",
     )
     rect = (0, 0, 1, 1)

@@ -318,27 +318,160 @@ fica bem abaixo disso — sinal de saturação.
   que num Linux nativo, então os tempos absolutos são maiores que os de um servidor real.
 - Nos testes com falhas, o tempo e o RPS incluem as respostas de erro (que voltam rápido); os gráficos marcam esses pontos.
 
-## Gráficos gerados
+## Gráficos
 
-Para cada matriz (`locust/resultados/` e `locust/resultados_maxconn500/`):
+Foram gerados **18 gráficos**: 9 por matriz (3 comparativos + 6 no formato pedido no enunciado).
+Todos ficam versionados em `locust/resultados/` (Matriz A, 151 conexões) e
+`locust/resultados_maxconn500/` (Matriz B, 500 conexões).
 
-**Normais** (`graficos/`) — os dois estilos pedidos no enunciado:
+### Como ler os gráficos
 
-| Arquivo | Conteúdo |
-|---|---|
-| `cenarioN_usuarios_no_eixo_x.png` | X = usuários (10/350/400/500), 1 linha por quantidade de instâncias |
-| `cenarioN_instancias_no_eixo_x.png` | X = instâncias (1/2/3), 1 linha por quantidade de usuários |
+Cada figura tem **5 painéis empilhados**, sempre na mesma ordem:
 
-**Comparativos com legenda** (`comparacao/`):
+| Painel | Métrica | O que mostra |
+|---|---|---|
+| 1 | Tempo médio de resposta (ms) | média de todas as requisições do teste |
+| 2 | Mediana — percentil 50% (ms) | metade das requisições foi mais rápida que esse valor |
+| 3 | Percentil 95% (ms) | só 5% das requisições foram mais lentas — mostra os "piores casos" |
+| 4 | Requisições por segundo (RPS) | vazão: quantas requisições o sistema atendeu por segundo |
+| 5 | Taxa de erro (%) | porcentagem de requisições que voltaram `HTTP 500` |
 
-| Arquivo | Conteúdo |
-|---|---|
-| `comparacao_cenario1.png` | Zona verde (≤350) vs vermelha (400-500) — imagem 1MB |
-| `comparacao_cenario2.png` | Zona verde vs vermelha — texto 400KB |
-| `comparacao_cenario3.png` | Zona verde vs vermelha — imagem 300KB |
+Marcações:
 
-Comparar `locust/resultados/comparacao/` com `locust/resultados_maxconn500/comparacao/` mostra as barras
-hachuradas (com falha) da Matriz A sumindo na Matriz B.
+- **Faixa verde / vermelha** (comparativos): verde = até 350 usuários, vermelha = acima de 350. A legenda mostra o **erro máximo real** de cada faixa, calculado dos CSVs.
+- **Barra hachurada** (comparativos) ou **anel vermelho** (gráficos de linha): teste com falhas. O Locust inclui as respostas de erro — que voltam rápido — no tempo e no RPS, então **nesses pontos o tempo parece menor do que realmente foi** para as requisições que deram certo.
+- **"(post + imagem)"** no eixo Y (cenários 1 e 3): cada visita faz 2 requisições (o HTML do post e a imagem). Por isso o RPS desses cenários (~230) não é comparável diretamente com o do cenário 2 (~110), que faz 1 requisição por visita.
+- O subtítulo dos comparativos mostra as CPUs/RAM que o Docker enxergava e o limite de conexões do MySQL usado.
+
+---
+
+### Comparativos — Matriz A (MySQL com 151 conexões, o padrão)
+
+Barras agrupadas: no eixo X, os níveis de usuários; em cada grupo, uma barra por quantidade de instâncias
+(azul = 1, verde = 2, laranja = 3).
+
+#### Cenário 1 — post com imagem de ~1MB
+
+<img src="locust/resultados/comparacao/comparacao_cenario1.png" width="650" alt="Comparativo do cenario 1 com MySQL 151 conexoes">
+
+- **0 erros** em todos os 12 testes — a legenda mostra "erro max 0.0%" nas duas faixas.
+- **Tempo médio** sobe com a carga: ~260-290 ms com 350 usuários → ~400-490 ms com 500.
+- **RPS estaciona em ~210-235** a partir de 350 usuários, com 1, 2 ou 3 instâncias: a máquina já está saturada.
+- Com 10 usuários o P95 de 1 instância (1500 ms) destoa — é o primeiro teste depois de subir os containers (cache frio). Com tão poucas requisições (~250 por teste), poucos casos lentos já puxam o P95.
+
+#### Cenário 2 — post com texto de ~400KB
+
+<img src="locust/resultados/comparacao/comparacao_cenario2.png" width="650" alt="Comparativo do cenario 2 com MySQL 151 conexoes">
+
+- É o **cenário mais pesado**: o PHP monta uma página de ~460KB a cada requisição.
+- **Erros só com 2-3 instâncias**: 0,9% (400 usuários, 3 instâncias), 2,5% (500, 2 instâncias) e 1,1% (500, 3 instâncias) — barras hachuradas no último painel.
+- **RPS ~110** e quase constante de 350 a 500 usuários: o servidor não consegue atender mais.
+- **Atenção à leitura**: com 500 usuários, 1 instância tem o maior tempo médio (1120 ms) e 2-3 instâncias parecem mais rápidas (860-880 ms). Isso é efeito das falhas: as respostas de erro voltam rápido e puxam a média para baixo (barras hachuradas). Na Matriz B, sem erros, a vantagem some.
+
+#### Cenário 3 — post com imagem de ~300KB
+
+<img src="locust/resultados/comparacao/comparacao_cenario3.png" width="650" alt="Comparativo do cenario 3 com MySQL 151 conexoes">
+
+- **Único erro: 500 usuários com 3 instâncias (4,1%)** — 265 falhas, exatamente as 265 conexões que o MySQL recusou nesse teste.
+- Esse mesmo teste tem o **pior P95 do cenário (1800 ms)**: quando o MySQL fica no limite, as requisições que conseguem conexão também esperam mais.
+- Tempos menores que no cenário 1 (a imagem tem 300KB em vez de 1MB) e **RPS ~220-250**.
+
+---
+
+### Comparativos — Matriz B (MySQL com 500 conexões)
+
+Mesmos testes, mudando só o limite de conexões do MySQL. **Nenhuma barra hachurada e 0% de erro nos 36 testes.**
+
+#### Cenário 1
+
+<img src="locust/resultados_maxconn500/comparacao/comparacao_cenario1.png" width="650" alt="Comparativo do cenario 1 com MySQL 500 conexoes">
+
+#### Cenário 2
+
+<img src="locust/resultados_maxconn500/comparacao/comparacao_cenario2.png" width="650" alt="Comparativo do cenario 2 com MySQL 500 conexoes">
+
+#### Cenário 3
+
+<img src="locust/resultados_maxconn500/comparacao/comparacao_cenario3.png" width="650" alt="Comparativo do cenario 3 com MySQL 500 conexoes">
+
+O que muda da Matriz A para a B nos testes que tinham falhado:
+
+| Teste | Erro (A → B) | Tempo médio (A → B) | P95 (A → B) | Pico de conexões no MySQL (A → B) |
+|---|---|---|---|---|
+| cenario2_u400_i3 | 0,94% → **0%** | 796 → 652 ms | 1900 → 1500 ms | 152 (limite) → 139 |
+| cenario2_u500_i2 | 2,51% → **0%** | 860 → 1078 ms | 2100 → 2500 ms | 152 (limite) → 216 |
+| cenario2_u500_i3 | 1,14% → **0%** | 880 → 915 ms | 2600 → 2500 ms | 152 (limite) → 179 |
+| cenario3_u500_i3 | 4,11% → **0%** | 469 → 394 ms | 1800 → 1300 ms | 152 (limite) → 114 |
+
+- **Os erros somem em todos.** Em dois deles o pico passou de 151 conexões (216 e 179) — na Matriz A essas conexões a mais seriam recusadas.
+- No `cenario2_u500_i2` o tempo médio **subiu** (860 → 1078 ms): na Matriz A, 2,5% das requisições eram erros rápidos que baixavam a média; agora todas são atendidas de verdade.
+- **O RPS praticamente não muda** entre as matrizes (~105-115 no cenário 2, ~205-255 nos cenários 1 e 3): o limite do MySQL causava os erros, mas quem limita a vazão é a CPU da máquina.
+
+---
+
+### Gráficos pedidos no enunciado — Matriz A
+
+O enunciado pede gráficos de linha com **o número de usuários** ou **a quantidade de instâncias** no eixo X.
+
+#### Eixo X = usuários (uma linha por quantidade de instâncias)
+
+<img src="locust/resultados/graficos/cenario1_usuarios_no_eixo_x.png" width="560" alt="Cenario 1, eixo X usuarios">
+<img src="locust/resultados/graficos/cenario2_usuarios_no_eixo_x.png" width="560" alt="Cenario 2, eixo X usuarios">
+<img src="locust/resultados/graficos/cenario3_usuarios_no_eixo_x.png" width="560" alt="Cenario 3, eixo X usuarios">
+
+Na ordem: cenário 1, cenário 2 e cenário 3.
+
+- **Tempo e P95 crescem com os usuários** nos três cenários; no cenário 2 a subida é a mais íngreme (até ~1,1s de média com 500 usuários).
+- **O RPS cresce de 10 para 350 usuários e depois achata**: de 350 para 500 usuários a vazão quase não muda, enquanto o tempo sobe. Esse "joelho" é o ponto de saturação da máquina.
+- **As três linhas (1, 2 e 3 instâncias) ficam próximas** em quase todos os pontos: mais instâncias não mudam muito o desempenho numa máquina única.
+- **A taxa de erro só sai de zero com 400-500 usuários**, sempre nas linhas de 2 ou 3 instâncias (anéis vermelhos); a linha de 1 instância fica em 0% do começo ao fim.
+- A reta entre 10 e 350 usuários é só uma ligação entre os pontos: não houve teste no meio desse intervalo.
+
+#### Eixo X = instâncias (uma linha por quantidade de usuários)
+
+<img src="locust/resultados/graficos/cenario1_instancias_no_eixo_x.png" width="560" alt="Cenario 1, eixo X instancias">
+<img src="locust/resultados/graficos/cenario2_instancias_no_eixo_x.png" width="560" alt="Cenario 2, eixo X instancias">
+<img src="locust/resultados/graficos/cenario3_instancias_no_eixo_x.png" width="560" alt="Cenario 3, eixo X instancias">
+
+Na ordem: cenário 1, cenário 2 e cenário 3.
+
+- **As linhas de RPS são praticamente horizontais**: com 350, 400 ou 500 usuários, passar de 1 para 3 instâncias não aumenta a vazão. É a confirmação visual de que o gargalo é a máquina, não o número de containers.
+- **No painel de erro, todas as linhas saem de 0% em 1 instância**; os pontos acima de zero aparecem só em 2 e 3 instâncias (cenário 2 com 400-500 usuários e cenário 3 com 500) — é o limite de conexões do MySQL sendo estourado.
+- A linha de **10 usuários** oscila (ex.: 606 ms com 3 instâncias no cenário 2): com poucas requisições e containers recém-iniciados, qualquer pico pesa muito.
+
+---
+
+### Gráficos pedidos no enunciado — Matriz B
+
+<details>
+<summary>Ver os 6 gráficos da Matriz B (MySQL com 500 conexões)</summary>
+
+#### Eixo X = usuários
+
+<img src="locust/resultados_maxconn500/graficos/cenario1_usuarios_no_eixo_x.png" width="560" alt="Matriz B, cenario 1, eixo X usuarios">
+<img src="locust/resultados_maxconn500/graficos/cenario2_usuarios_no_eixo_x.png" width="560" alt="Matriz B, cenario 2, eixo X usuarios">
+<img src="locust/resultados_maxconn500/graficos/cenario3_usuarios_no_eixo_x.png" width="560" alt="Matriz B, cenario 3, eixo X usuarios">
+
+#### Eixo X = instâncias
+
+<img src="locust/resultados_maxconn500/graficos/cenario1_instancias_no_eixo_x.png" width="560" alt="Matriz B, cenario 1, eixo X instancias">
+<img src="locust/resultados_maxconn500/graficos/cenario2_instancias_no_eixo_x.png" width="560" alt="Matriz B, cenario 2, eixo X instancias">
+<img src="locust/resultados_maxconn500/graficos/cenario3_instancias_no_eixo_x.png" width="560" alt="Matriz B, cenario 3, eixo X instancias">
+
+Mesmo formato da Matriz A, sem nenhum anel vermelho: a taxa de erro fica em 0% em todos os pontos,
+e as curvas de tempo e RPS têm o mesmo formato — o limite de conexões só mudava os erros.
+
+</details>
+
+### Como gerar de novo
+
+```bash
+python3 gerar_graficos.py
+python3 gerar_graficos_comparacao.py --legenda "MySQL max_connections=151 (padrao)"
+python3 gerar_graficos.py --pasta locust/resultados_maxconn500
+python3 gerar_graficos_comparacao.py --pasta locust/resultados_maxconn500 --legenda "MySQL max_connections=500"
+```
+
 
 ## Checklist final — Requisitos do enunciado
 
