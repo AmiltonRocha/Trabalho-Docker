@@ -12,7 +12,7 @@ Gera/usa os arquivos em cenarios/ e grava locust/posts.json com as URLs
 dos posts para o locustfile.py.
 
 Uso:
-  python3 criar_posts.py --host http://localhost --user Amilton --password '@Amilton-2903'
+  python3 criar_posts.py --host http://localhost:8080 --user SEU_USUARIO --password 'SUA_SENHA'
 """
 import argparse
 import base64
@@ -108,7 +108,7 @@ def caminho_relativo(url_absoluta, host):
 
 def main():
     ap = argparse.ArgumentParser(description="Cria os 3 posts de teste no WordPress")
-    ap.add_argument("--host", default="http://localhost", help="URL base do WordPress")
+    ap.add_argument("--host", default="http://localhost:8080", help="URL base do WordPress")
     ap.add_argument("--user", required=True, help="usuario admin do WordPress")
     ap.add_argument("--password", required=True, help="senha do usuario admin")
     args = ap.parse_args()

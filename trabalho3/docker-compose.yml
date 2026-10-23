@@ -5,6 +5,9 @@ services:
     image: mysql:5.7
     container_name: mysql
     restart: always
+    # limite de conexoes (padrao do MySQL: 151). Cada instancia do WordPress
+    # abre ate 150 conexoes, entao com 2-3 instancias o padrao estoura.
+    command: --max-connections=${MYSQL_MAX_CONNECTIONS:-151}
     environment:
       MYSQL_ROOT_PASSWORD: r00t
       MYSQL_DATABASE: wordpress
@@ -36,7 +39,9 @@ services:
     container_name: nginx
     restart: always
     ports:
-      - "80:80"
+      # 8080 no host (a porta 80 fica livre para o Apache do XAMPP) e no
+      # container, para o WordPress nao redirecionar o Locust para outra porta
+      - "8080:8080"
     depends_on:
       - wordpress
     volumes:
@@ -51,7 +56,7 @@ services:
     ports:
       - "8089:8089"
     environment:
-      ATTACKED_HOST: http://nginx
+      ATTACKED_HOST: http://nginx:8080
       LOCUST_FILE: locustfile.py
       LOCUST_OPTS: ""
     volumes:

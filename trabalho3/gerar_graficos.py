@@ -9,7 +9,11 @@ Ex: cenario1_u100_i3_stats.csv
 Gera, por cenario, 2 figuras (PNG):
   - usuarios_no_eixo_x.png : eixo X = usuarios, 1 linha por n. de instancias
   - instancias_no_eixo_x.png: eixo X = instancias, 1 linha por n. de usuarios
-Cada figura tem 3 subplots: tempo medio de resposta (ms), RPS e taxa de erro (%).
+Cada figura tem 5 subplots: tempo medio, mediana, P95 (ms), RPS e taxa de erro (%).
+
+Pontos com anel vermelho = execucoes com falhas. O Locust inclui as respostas
+de erro (HTTP 500, que voltam rapido) no tempo de resposta e no RPS, entao
+nesses pontos o tempo parece menor do que o real.
 
 Dependencia: pip install matplotlib
 Uso:
@@ -48,17 +52,21 @@ def achar_coluna(linha, *candidatas):
 def ler_stats(caminho):
     with open(caminho, newline="", encoding="utf-8") as f:
         leitor = csv.DictReader(f)
+        n_reqs = 0  # requisicoes distintas por visita (post, imagem...)
         for linha in leitor:
             nome = (linha.get("Name") or "").strip()
-            if nome in ("Aggregated", "Aggregated "):
-                total = float(achar_coluna(linha, "# requests", "Request Count") or 0)
-                falhas = float(achar_coluna(linha, "# failures", "Failure Count") or 0)
-                avg = float(achar_coluna(linha, "Average response time", "Average Latency") or 0)
-                median = float(achar_coluna(linha, "Median Response Time") or 0)
-                p95 = float(achar_coluna(linha, "95%") or 0)
-                rps = float(achar_coluna(linha, "Requests/s", "Requests/s (failures/s)") or 0)
-                erro = (falhas / total * 100) if total else 0.0
-                return {"avg_ms": avg, "median_ms": median, "p95_ms": p95, "rps": rps, "erro_pct": erro}
+            if nome != "Aggregated":
+                n_reqs += 1
+                continue
+            total = float(achar_coluna(linha, "# requests", "Request Count") or 0)
+            falhas = float(achar_coluna(linha, "# failures", "Failure Count") or 0)
+            avg = float(achar_coluna(linha, "Average response time", "Average Latency") or 0)
+            median = float(achar_coluna(linha, "Median Response Time") or 0)
+            p95 = float(achar_coluna(linha, "95%") or 0)
+            rps = float(achar_coluna(linha, "Requests/s", "Requests/s (failures/s)") or 0)
+            erro = (falhas / total * 100) if total else 0.0
+            return {"avg_ms": avg, "median_ms": median, "p95_ms": p95, "rps": rps,
+                    "erro_pct": erro, "n_reqs": n_reqs}
     return None
 
 
@@ -85,6 +93,10 @@ def plotar_cenario(cenario, pontos, pasta_saida, plt):
     usuarios = sorted({p["usuarios"] for p in pontos})
     instancias = sorted({p["instancias"] for p in pontos})
 
+    # cenarios com imagem: o "Aggregated" soma post + imagem (2 requisicoes
+    # por visita), entao tempo e RPS nao sao comparaveis com o cenario2
+    com_imagem = any(p["n_reqs"] > 1 for p in pontos)
+
     def serie(filtro, eixo, chave):
         vals = []
         for x in eixo:
@@ -92,37 +104,66 @@ def plotar_cenario(cenario, pontos, pasta_saida, plt):
             vals.append(np.mean([p[chave] for p in achou]) if achou else np.nan)
         return vals
 
-    # Grafico 1: X = usuarios, 1 linha por instancia
-    fig, eixos = plt.subplots(5, 1, figsize=(8, 18), sharex=True)
-    for inst in instancias:
+    def desenhar(eixo_x, linhas, rotulo_linha, xlabel, titulo, arquivo):
+        """eixo_x: valores do eixo X; linhas: (valor, filtro) de cada linha."""
+        fig, eixos = plt.subplots(5, 1, figsize=(8, 18), sharex=True)
+        houve_falha = False
+        for valor, filtro in linhas:
+            erros = serie(filtro, eixo_x, "erro_pct")
+            for ax, (chave, rotulo, _) in zip(eixos, METRICAS):
+                ys = serie(filtro, eixo_x, chave)
+                ax.plot(eixo_x, ys, marker="o", label=rotulo_linha(valor))
+                # execucao com falhas: anel vermelho (o valor inclui respostas de erro)
+                xs_f = [x for x, e in zip(eixo_x, erros) if e > 0]
+                ys_f = [y for y, e in zip(ys, erros) if e > 0]
+                if xs_f:
+                    houve_falha = True
+                    ax.scatter(xs_f, ys_f, s=160, facecolors="none",
+                               edgecolors="#D32F2F", linewidths=1.5, zorder=3)
         for ax, (chave, rotulo, _) in zip(eixos, METRICAS):
-            ys = serie(lambda p, x, i=inst: p["usuarios"] == x and p["instancias"] == i, usuarios, chave)
-            ax.plot(usuarios, ys, marker="o", label=f"{inst} instancia(s)")
+            if com_imagem and chave != "erro_pct":
+                rotulo += "\n(post + imagem)"
             ax.set_ylabel(rotulo)
             ax.grid(True, alpha=0.3)
+            # metricas nao negativas: eixo Y comeca em 0 (evita -0.04% de erro)
+            ax.set_ylim(0, max(ax.get_ylim()[1], 1))
             ax.legend()
-    eixos[-1].set_xlabel("Usuarios simultaneos")
-    eixos[0].set_title(f"{cenario} - variando usuarios (eixo X = usuarios)")
-    fig.tight_layout()
-    caminho1 = os.path.join(pasta_saida, f"{cenario}_usuarios_no_eixo_x.png")
-    fig.savefig(caminho1, dpi=110)
-    plt.close(fig)
+        # so os valores testados no eixo X (ex: 1, 2, 3 instancias)
+        eixos[-1].set_xticks(eixo_x)
+        eixos[-1].set_xlabel(xlabel)
+        eixos[0].set_title(titulo)
+        rect = (0, 0, 1, 1)
+        if houve_falha:
+            fig.text(0.5, 0.005,
+                     "Anel vermelho: execucao com falhas (HTTP 500). O Locust inclui as respostas\n"
+                     "de erro, que voltam rapido, no tempo e no RPS - o tempo real dos acertos e maior.",
+                     ha="center", fontsize=8, color="#D32F2F")
+            rect = (0, 0.025, 1, 1)
+        fig.tight_layout(rect=rect)
+        caminho = os.path.join(pasta_saida, arquivo)
+        fig.savefig(caminho, dpi=110)
+        plt.close(fig)
+        return caminho
+
+    # Grafico 1: X = usuarios, 1 linha por instancia
+    caminho1 = desenhar(
+        usuarios,
+        [(i, lambda p, x, i=i: p["usuarios"] == x and p["instancias"] == i) for i in instancias],
+        lambda i: f"{i} instancia(s)",
+        "Usuarios simultaneos",
+        f"{cenario} - variando usuarios (eixo X = usuarios)",
+        f"{cenario}_usuarios_no_eixo_x.png",
+    )
 
     # Grafico 2: X = instancias, 1 linha por usuarios
-    fig, eixos = plt.subplots(5, 1, figsize=(8, 18), sharex=True)
-    for usr in usuarios:
-        for ax, (chave, rotulo, _) in zip(eixos, METRICAS):
-            ys = serie(lambda p, x, u=usr: p["instancias"] == x and p["usuarios"] == u, instancias, chave)
-            ax.plot(instancias, ys, marker="o", label=f"{usr} usuario(s)")
-            ax.set_ylabel(rotulo)
-            ax.grid(True, alpha=0.3)
-            ax.legend()
-    eixos[-1].set_xlabel("Instancias do WordPress")
-    eixos[0].set_title(f"{cenario} - variando instancias (eixo X = instancias)")
-    fig.tight_layout()
-    caminho2 = os.path.join(pasta_saida, f"{cenario}_instancias_no_eixo_x.png")
-    fig.savefig(caminho2, dpi=110)
-    plt.close(fig)
+    caminho2 = desenhar(
+        instancias,
+        [(u, lambda p, x, u=u: p["instancias"] == x and p["usuarios"] == u) for u in usuarios],
+        lambda u: f"{u} usuario(s)",
+        "Instancias do WordPress",
+        f"{cenario} - variando instancias (eixo X = instancias)",
+        f"{cenario}_instancias_no_eixo_x.png",
+    )
 
     return caminho1, caminho2
 
