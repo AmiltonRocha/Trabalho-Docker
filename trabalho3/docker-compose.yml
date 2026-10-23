@@ -5,6 +5,9 @@ services:
     image: mysql:5.7
     container_name: mysql
     restart: always
+    # limite de conexoes (padrao do MySQL: 151). Cada instancia do WordPress
+    # abre ate 150 conexoes, entao com 2-3 instancias o padrao estoura.
+    command: --max-connections=${MYSQL_MAX_CONNECTIONS:-151}
     environment:
       MYSQL_ROOT_PASSWORD: r00t
       MYSQL_DATABASE: wordpress

@@ -5,7 +5,7 @@ Trabalho 3 - Gera graficos COMPARATIVOS com legenda de zona segura vs zona de es
 Le os CSVs gerados com --csv (locust/resultados/*_stats.csv), no padrao:
     <cenario>_u<usuarios>_i<instancias>_stats.csv
 
-Zonas (limite validado na maquina de 7,5GB):
+Zonas:
   - ZONA SEGURA  : ate LIMITE_SEGURO (350) usuarios
   - ZONA ESTOURO : acima de LIMITE_SEGURO
 A faixa de cada zona e o erro maximo mostrado na legenda sao calculados a
@@ -21,11 +21,15 @@ nessas barras o tempo parece menor do que o real.
 Dependencia: pip install matplotlib
 Uso:
   python3 gerar_graficos_comparacao.py
+  python3 gerar_graficos_comparacao.py --pasta locust/resultados_maxconn500 --legenda "MySQL max_connections=500"
+O subtitulo mostra as CPUs/RAM do Docker (lidas do `docker info`) e a --legenda.
 """
+import argparse
 import csv
 import glob
 import os
 import re
+import subprocess
 import sys
 
 AQUI = os.path.dirname(os.path.abspath(__file__))
@@ -90,7 +94,20 @@ def carregar(pasta):
     return dados
 
 
-def plotar_comparacao(cenario, pontos, pasta_saida, plt):
+def descrever_maquina():
+    """CPUs e RAM que o Docker enxerga (onde rodaram Locust, WordPress e MySQL)."""
+    try:
+        saida = subprocess.run(
+            ["docker", "info", "--format", "{{.NCPU}} {{.MemTotal}}"],
+            capture_output=True, text=True, timeout=20, check=True,
+        ).stdout.split()
+        cpus, ram = int(saida[0]), int(saida[1]) / 1024 ** 3
+        return f"Docker: {cpus} CPU / {ram:.1f}GB RAM".replace(".", ",")
+    except (OSError, subprocess.SubprocessError, ValueError, IndexError):
+        return "Maquina unica"
+
+
+def plotar_comparacao(cenario, pontos, pasta_saida, plt, legenda):
     import numpy as np
 
     usuarios = sorted({p["usuarios"] for p in pontos})
@@ -175,7 +192,7 @@ def plotar_comparacao(cenario, pontos, pasta_saida, plt):
         "Usuarios simultaneos (" + " | ".join(str(u) for u in usuarios) + ")", fontsize=10)
     eixos[0].set_title(
         f"{cenario} - Comparacao de carga: ZONA SEGURA (verde) vs ZONA DE ESTOURO (vermelho)\n"
-        f"Maquina: 12 CPU / 7,5GB RAM | Locust + WordPress + MySQL na mesma maquina",
+        f"{legenda} | Locust + WordPress + MySQL na mesma maquina",
         fontsize=11, fontweight="bold",
     )
     rect = (0, 0, 1, 1)
@@ -201,17 +218,26 @@ def main():
         print("ERRO: matplotlib nao instalado. Rode: pip install matplotlib", file=sys.stderr)
         sys.exit(1)
 
-    dados = carregar(PASTA_PADRAO)
+    ap = argparse.ArgumentParser(description="Graficos comparativos (zona segura x estouro)")
+    ap.add_argument("--pasta", default=PASTA_PADRAO, help="pasta com os *_stats.csv")
+    ap.add_argument("--legenda", default=None,
+                    help='texto do subtitulo (padrao: CPU/RAM do Docker), ex: "MySQL max_connections=500"')
+    args = ap.parse_args()
+    legenda = descrever_maquina()
+    if args.legenda:
+        legenda += f" | {args.legenda}"
+
+    dados = carregar(args.pasta)
     if not dados:
-        print(f"Nenhum CSV de stats encontrado em {PASTA_PADRAO}", file=sys.stderr)
+        print(f"Nenhum CSV de stats encontrado em {args.pasta}", file=sys.stderr)
         sys.exit(1)
 
-    pasta_saida = os.path.join(PASTA_PADRAO, "comparacao")
+    pasta_saida = os.path.join(args.pasta, "comparacao")
     os.makedirs(pasta_saida, exist_ok=True)
 
     for cenario, pontos in sorted(dados.items()):
         print(f"{cenario}: {len(pontos)} execucoes")
-        caminho = plotar_comparacao(cenario, pontos, pasta_saida, plt)
+        caminho = plotar_comparacao(cenario, pontos, pasta_saida, plt, legenda)
         print(f"  grafico: {caminho}")
 
     print(f"\nPronto! Graficos comparativos em: {pasta_saida}")

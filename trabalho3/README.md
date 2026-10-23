@@ -42,7 +42,10 @@ python3 criar_posts.py --host http://localhost:8080 --user SEU_USUARIO --passwor
 Esse comando:
 - Gera os conteúdos em `cenarios/` (imagem 1MB, texto 400KB, imagem 300KB)
 - Sobe as imagens e cria os 3 posts no WordPress
-- Grava as URLs em `locust/posts.json` (o Locust usa essas URLs)
+- Grava as URLs em `locust/posts.json` (o Locust usa o `post_url` de cada cenário)
+
+Nos cenários 1 e 3 o Locust abre o HTML do post e baixa a imagem do `<img src>` dele, como um
+navegador. Se o post vier sem imagem, a requisição é marcada como falha ("post sem <img>").
 
 ---
 
@@ -100,28 +103,48 @@ for i in 1 2 3; do curl -sI http://localhost:8080/ | grep -i x-upstream; done
 
 Matriz: 3 cenários × 4 níveis de carga × 3 instâncias (1, 2, 3) = **36 execuções**
 
-| Nível | Usuários | Significado | Resultado |
-|---|---|---|---|
-| Leve | 10 | uso normal | 0% erro |
-| Pesado | 350 | limite da máquina (7,5GB RAM) | ~0% erro |
-| Extremo | 400 | zona de estouro | até ~3% erro no cenário 2 (HTTP 500) |
-| Máximo | 500 | estouro total | até ~17% erro no cenário 2 (HTTP 500) |
+| Nível | Usuários | Significado |
+|---|---|---|
+| Leve | 10 | uso normal |
+| Pesado | 350 | máquina já saturada (RPS para de crescer) |
+| Extremo | 400 | acima da saturação |
+| Máximo | 500 | carga máxima testada |
 
-- Duração: 30s por teste, spawn rate 25/s → ~25 min no total
+- Duração: 30s por teste + 20s de pausa antes de cada um, spawn rate 25/s → ~35 min no total
+- A pausa evita que a carga de um teste pesado contamine o teste seguinte
 
 ```bash
 chmod +x rodar_testes.sh
 ./rodar_testes.sh
 ```
 
-Cada execução gera um CSV em `locust/resultados/` no padrão:
-`cenario1_u10_i1_stats.csv`
+Cada execução gera um CSV em `locust/resultados/` no padrão `cenario1_u10_i1_stats.csv`,
+e o script grava também `conexoes_mysql.csv` com quantas conexões o MySQL **recusou por excesso**
+em cada teste (é a causa dos erros HTTP 500 — ver Evidências).
+
+Segunda matriz, com o MySQL aceitando mais conexões (para comprovar o gargalo):
+
+```bash
+MYSQL_MAX_CONNECTIONS=500 SAIDA=resultados_maxconn500 ./rodar_testes.sh
+```
+
+| Variável | Padrão | O que faz |
+|---|---|---|
+| `USUARIOS` | `10 350 400 500` | níveis de usuários |
+| `INSTANCIAS` | `1 2 3` | quantidades de instâncias do WordPress |
+| `RUN_TIME` | `30s` | duração de cada teste |
+| `PAUSA` | `20` | segundos de descanso antes de cada teste |
+| `SAIDA` | `resultados` | pasta dentro de `locust/` para os CSVs |
+| `MYSQL_MAX_CONNECTIONS` | `151` | limite de conexões do MySQL (padrão do MySQL) |
 
 Para testes mais rápidos (menos combinações e tempo menor):
 
 ```bash
 USUARIOS="10 350" INSTANCIAS="1 2" RUN_TIME=30s ./rodar_testes.sh
 ```
+
+> Deixe o notebook **na tomada** e sem suspender durante os testes: na bateria o
+> processador fica mais lento e os tempos de resposta deixam de ser comparáveis.
 
 ---
 
@@ -135,9 +158,10 @@ Gráficos normais (por cenário):
 
 ```bash
 python3 gerar_graficos.py
+python3 gerar_graficos.py --pasta locust/resultados_maxconn500
 ```
 
-Os gráficos ficam em `locust/resultados/graficos/`:
+Os gráficos ficam em `<pasta>/graficos/` (ex.: `locust/resultados/graficos/`):
 
 - `cenarioN_usuarios_no_eixo_x.png` — eixo X = usuários, 1 linha por instância
 - `cenarioN_instancias_no_eixo_x.png` — eixo X = instâncias (1, 2, 3), 1 linha por usuários
@@ -147,14 +171,19 @@ Cada figura traz 5 métricas: tempo médio de resposta (ms), **mediana (percenti
 **Gráficos comparativos com legenda (zona segura vs zona de estouro):**
 
 ```bash
-python3 gerar_graficos_comparacao.py
+python3 gerar_graficos_comparacao.py --legenda "MySQL max_connections=151 (padrao)"
+python3 gerar_graficos_comparacao.py --pasta locust/resultados_maxconn500 --legenda "MySQL max_connections=500"
 ```
 
-Os gráficos ficam em `locust/resultados/comparacao/`:
+Os gráficos ficam em `<pasta>/comparacao/`:
 
 - `comparacao_cenarioN.png` — figura única com 5 subplots de **barras agrupadas** (as mesmas 5 métricas, 1 barra por instância) e legenda destacando:
-  - **ZONA VERDE** (até 350 usuários): ~0% de erro, sistema estável
-  - **ZONA VERMELHA** (400 e 500 usuários): cenário 2 com ~3% de erro em 400 e ~17% em 500 (HTTP 500), sistema saturado
+  - **ZONA VERDE** (até 350 usuários) e **ZONA VERMELHA** (acima de 350), com o erro máximo real de cada zona calculado dos CSVs
+  - barras **hachuradas** = execuções com falhas (o tempo delas inclui as respostas de erro, que voltam rápido)
+  - o subtítulo mostra as CPUs/RAM do Docker (lidas do `docker info`) e o texto de `--legenda`
+
+Nos gráficos dos cenários 1 e 3, tempo e RPS aparecem como **"(post + imagem)"**: cada visita faz
+2 requisições (HTML + imagem), então esses valores não são comparáveis diretamente com o cenário 2.
 
 ---
 
@@ -200,73 +229,125 @@ rm -rf locust/resultados/*
 
 ---
 
-# Evidências — Resultados dos Testes (18/10/2026)
+# Evidências — Resultados dos Testes (22/10/2026)
 
-> Matriz completa: 36 execuções (3 cenários × 4 níveis × 3 instâncias), 30s cada.
+> Duas matrizes completas de 36 execuções (3 cenários × 4 níveis × 3 instâncias), 30s cada, com 20s de pausa entre testes:
+> - **Matriz A** — MySQL com o limite padrão de **151 conexões** → `locust/resultados/`
+> - **Matriz B** — MySQL com **500 conexões** → `locust/resultados_maxconn500/`
+
+## Ambiente
+
+| Item | Valor |
+|---|---|
+| Máquina | Intel Core Ultra 9 185H (16 núcleos / 22 threads), 31,5 GB RAM, Windows 11 |
+| Docker | Docker Desktop (WSL2): 22 CPUs / 15,4 GB RAM para os containers |
+| Onde rodou | Locust, nginx, WordPress e MySQL **na mesma máquina** |
+| Energia | Na tomada, sem suspensão durante os testes (conferido no log de energia do Windows) |
+| Imagens | WordPress 5.4.2 (PHP 7.2/Apache), MySQL 5.7, nginx 1.19, Locust 1.2.3 |
 
 ## Resumo por nível de carga
 
-| Nível | Usuários | Testes | Erro | Tempo médio | RPS máx | Situação |
-|---|---|---|---|---|---|---|
-| Leve | 10 | 9 | **0%** | 11-55ms | ~10 | Estável |
-| Pesado | 350 | 9 | **0,02%*** | 16-720ms | ~272 | No limite |
-| Extremo | 400 | 9 | **0,27%**** | 26-846ms | ~295 | Saturado no cenário 2 (HTTP 500) |
-| Máximo | 500 | 9 | **1,57%***** | 33-1014ms | ~332 | Estouro no cenário 2 (HTTP 500) |
+| Usuários | Erro (A: 151 conexões) | Erro (B: 500 conexões) | Tempo médio (A) | Tempo médio (B) | RPS máx (A / B) |
+|---|---|---|---|---|---|
+| 10 | **0%** | **0%** | 87-606 ms* | 101-353 ms* | 10 / 10 |
+| 350 | **0%** | **0%** | 134-538 ms | 230-517 ms | 243 / 226 |
+| 400 | **0,05%** (28 falhas) | **0%** | 250-796 ms | 252-757 ms | 240 / 241 |
+| 500 | **0,78%** (386 falhas) | **0%** | 354-1120 ms | 336-1078 ms | 249 / 253 |
 
-\* Só o cenario2 com 3 instâncias teve 12 falhas em 2906 requisições (0,41%) — os outros 8 testes de 350 ficaram com 0%.
+\* Com 10 usuários há poucas requisições (~130-280 por teste), então o tempo varia muito entre execuções;
+os valores mais altos aparecem logo depois de mudar a quantidade de instâncias (containers recém-iniciados, cache frio).
 
-\*\* Só o cenario2 com 2 e 3 instâncias teve falhas (162 em 59634 requisições no total do nível) — os outros 7 testes de 400 ficaram com 0%.
+## Por que dá HTTP 500: o limite de conexões do MySQL
 
-\*\*\* Só o cenario2 com 2 e 3 instâncias teve falhas (1166 em 74418 requisições no total do nível) — os outros 7 testes de 500 ficaram com 0%.
+Na **Matriz A**, só 4 dos 36 testes tiveram falhas — e em todos o MySQL recusou conexões por excesso no mesmo teste:
 
-## Detalhe das falhas
+| Teste | Falhas | Total | % | Conexões recusadas pelo MySQL | Pico de conexões |
+|---|---|---|---|---|---|
+| cenario2_u400_i3 | 28 | 2982 | 0,94% | 28 | 152 (limite) |
+| cenario2_u500_i2 | 84 | 3341 | 2,51% | 96 | 152 (limite) |
+| cenario2_u500_i3 | 37 | 3244 | 1,14% | 54 | 152 (limite) |
+| cenario3_u500_i3 | 265 | 6454 | 4,11% | 265 | 152 (limite) |
 
-| Teste | Falhas | Total | % |
+Nos outros 32 testes: **0 conexões recusadas e 0 falhas** (dados em `locust/resultados/conexoes_mysql.csv`).
+
+O motivo: cada instância do WordPress (Apache) atende até **150 requisições ao mesmo tempo**, cada uma com sua
+conexão ao MySQL. O MySQL aceita **151** por padrão.
+
+- **1 instância** → no máximo ~150 conexões → **nunca estoura** (0 falha em todos os 12 testes com 1 instância)
+- **2-3 instâncias** → até 300-450 conexões disputando 151 vagas → as que sobram viram `HTTP 500`
+
+Na **Matriz B** (500 conexões), com as mesmas cargas: **0 falhas e 0 conexões recusadas nos 36 testes**.
+O pico chegou a **216 conexões** — acima do limite padrão, o que confirma que a Matriz A estouraria nesses testes.
+
+## Mais instâncias não aumentaram a vazão
+
+RPS médio nos níveis 350-500 (Matriz B, sem erros):
+
+| Cenário | 1 instância | 2 instâncias | 3 instâncias |
 |---|---|---|---|
-| cenario2_u350_i3 | 12 | 2906 | 0,41% |
-| cenario2_u400_i2 | 93 | 2963 | 3,14% |
-| cenario2_u400_i3 | 69 | 3004 | 2,30% |
-| cenario2_u500_i2 | 563 | 3476 | 16,20% |
-| cenario2_u500_i3 | 603 | 3482 | 17,32% |
+| 1 (imagem 1MB, post + imagem) | 229 | 221 | 220 |
+| 2 (texto 400KB) | 108 | 104 | 112 |
+| 3 (imagem 300KB, post + imagem) | 239 | 236 | 230 |
 
-Todos os erros são `HTTP 500` do WordPress — MySQL e PHP saturam acima de ~350 usuários simultâneos.
+A vazão fica praticamente igual com 1, 2 ou 3 instâncias, e quase não cresce de 350 para 500 usuários
+(enquanto o tempo de resposta sobe). Ou seja, **com 350 usuários a máquina já está saturada**: como Locust,
+nginx, WordPress e MySQL dividem as mesmas CPUs, mais containers do WordPress só dividem o mesmo processador.
+Para o ganho do balanceamento aparecer, as instâncias precisariam estar em máquinas diferentes.
 
-## Conclusão da máquina (12 CPU / 7,5GB RAM)
+Referência: cada usuário espera de 1 a 3s entre visitas (média 2s). Com 350 usuários o ideal seria ~175 visitas/s
+(~350 req/s nos cenários 1 e 3, que fazem 2 requisições por visita); o medido (~220-240 req/s e ~110 req/s no cenário 2)
+fica bem abaixo disso — sinal de saturação.
 
-- **Até 350 usuários**: sistema aguenta praticamente sem erro (zona segura)
-- **400 usuários**: 2-3% de erro no cenário mais pesado (texto 400KB) — **zona de estouro**
-- **500 usuários**: 16-17% de erro no cenário 2 com 2 e 3 instâncias — **estouro total**. Com 1 instância não houve erro, mas o tempo médio passou de 1 segundo (1014ms)
-- Cenários com imagem (1MB/300KB) aguentaram 500 usuários com 0 erro — o gargalo é o cenário de texto (HTML pesado + PHP renderizando)
-- No cenário 2, mais instâncias do WordPress **não** reduziram os erros (com 500 usuários até aumentaram): o gargalo é a máquina única (CPU/RAM e MySQL compartilhados), não o número de containers
+## Conclusões
+
+- **Até 350 usuários**: 0% de erro em todos os cenários e quantidades de instâncias.
+- **400-500 usuários com 2-3 instâncias**: aparecem erros `HTTP 500` porque o total de conexões das instâncias passa do
+  limite do MySQL (151). Com 1 instância não há erro em nenhum teste (no cenário 2 com 500 usuários o tempo médio
+  chega a 0,9-1,1s).
+- **Aumentar o `max_connections` do MySQL para 500 eliminou 100% dos erros** sem mudar a vazão: o banco compartilhado
+  era o gargalo de erros, e a CPU da máquina única era o gargalo de desempenho.
+- **Escalar só a camada web desloca o gargalo para o banco de dados.** Em produção, junto com mais instâncias do
+  WordPress seria preciso ajustar o banco (limite de conexões, pool de conexões ou réplicas) e usar mais de uma máquina.
+- O **cenário 2 (texto 400KB)** é o mais pesado para o servidor: ~110 req/s contra ~230 nos cenários com imagem,
+  porque o PHP monta uma página de ~460KB a cada requisição, enquanto a imagem é um arquivo estático.
+
+## Limitações
+
+- Locust e servidor na mesma máquina: o próprio gerador de carga consome CPU que falta ao WordPress.
+- O projeto fica numa pasta do OneDrive, montada no Docker Desktop (WSL2); o acesso a esses arquivos é mais lento
+  que num Linux nativo, então os tempos absolutos são maiores que os de um servidor real.
+- Nos testes com falhas, o tempo e o RPS incluem as respostas de erro (que voltam rápido); os gráficos marcam esses pontos.
 
 ## Gráficos gerados
 
-**Normais** (`locust/resultados/graficos/`) — os dois estilos pedidos no enunciado (usuários no eixo X e instâncias no eixo X):
+Para cada matriz (`locust/resultados/` e `locust/resultados_maxconn500/`):
+
+**Normais** (`graficos/`) — os dois estilos pedidos no enunciado:
 
 | Arquivo | Conteúdo |
 |---|---|
-| `cenario1_usuarios_no_eixo_x.png` | Cenário 1 (imagem 1MB), X = usuários (10/350/400/500) |
-| `cenario1_instancias_no_eixo_x.png` | Cenário 1, X = instâncias (1/2/3) |
-| `cenario2_usuarios_no_eixo_x.png` | Cenário 2 (texto 400KB), X = usuários |
-| `cenario2_instancias_no_eixo_x.png` | Cenário 2, X = instâncias |
-| `cenario3_usuarios_no_eixo_x.png` | Cenário 3 (imagem 300KB), X = usuários |
-| `cenario3_instancias_no_eixo_x.png` | Cenário 3, X = instâncias |
+| `cenarioN_usuarios_no_eixo_x.png` | X = usuários (10/350/400/500), 1 linha por quantidade de instâncias |
+| `cenarioN_instancias_no_eixo_x.png` | X = instâncias (1/2/3), 1 linha por quantidade de usuários |
 
-**Comparativos com legenda** (`locust/resultados/comparacao/`):
+**Comparativos com legenda** (`comparacao/`):
 
 | Arquivo | Conteúdo |
 |---|---|
 | `comparacao_cenario1.png` | Zona verde (≤350) vs vermelha (400-500) — imagem 1MB |
-| `comparacao_cenario2.png` | Zona verde vs vermelha — texto 400KB (mostra o estouro) |
+| `comparacao_cenario2.png` | Zona verde vs vermelha — texto 400KB |
 | `comparacao_cenario3.png` | Zona verde vs vermelha — imagem 300KB |
+
+Comparar `locust/resultados/comparacao/` com `locust/resultados_maxconn500/comparacao/` mostra as barras
+hachuradas (com falha) da Matriz A sumindo na Matriz B.
 
 ## Checklist final — Requisitos do enunciado
 
 | Requisito | Evidência | Status |
 |---|---|---|
+| Locust no docker-compose do Trabalho 2 | `docker-compose.yml` (serviço `locust`, `ATTACKED_HOST=http://nginx:8080`) | ✓ |
 | 3 cenários (imagem 1MB, texto 400KB, imagem 300KB) | `locustfile.py` + `criar_posts.py` | ✓ |
 | WordPress multi-instância (1, 2, 3) | `docker-compose.yml` + `--scale` | ✓ |
 | Balanceador Nginx | `nginx.conf` com `X-Upstream` | ✓ |
-| Testes de carga com Locust | 36 execuções, CSVs em `resultados/` | ✓ |
+| ≥3 níveis de usuários e ≥3 de instâncias | 4 níveis (10/350/400/500) × 3 instâncias, 2 matrizes de 36 execuções | ✓ |
 | Métricas: tempo, mediana, P95, RPS, erro | Gráficos em `graficos/` (X = usuários e X = instâncias) e `comparacao/` | ✓ |
 | Script automático de testes | `rodar_testes.sh` | ✓ |
